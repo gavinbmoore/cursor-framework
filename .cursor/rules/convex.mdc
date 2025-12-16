@@ -1,0 +1,287 @@
+---
+description: Convex database patterns and best practices
+globs:
+  - "convex/**/*.ts"
+  - "convex/**/*.tsx"
+alwaysApply: false
+---
+
+# Convex Database Rules
+
+## Schema Definition
+
+### Basic Schema Pattern
+```typescript
+// convex/schema.ts
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  users: defineTable({
+    name: v.string(),
+    email: v.string(),
+    clerkId: v.string(), // Link to Clerk auth
+    createdAt: v.number(),
+  })
+    .index("by_clerk_id", ["clerkId"])
+    .index("by_email", ["email"]),
+
+  tasks: defineTable({
+    title: v.string(),
+    description: v.optional(v.string()),
+    completed: v.boolean(),
+    userId: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"]),
+});
+```
+
+### Validator Types
+```typescript
+v.string()           // string
+v.number()           // number
+v.boolean()          // boolean
+v.null()             // null
+v.id("tableName")    // Document ID reference
+v.array(v.string())  // Array of strings
+v.object({...})      // Nested object
+v.optional(v.string()) // Optional field
+v.union(v.string(), v.number()) // Union type
+```
+
+## Queries (Read Data)
+
+### Basic Query
+```typescript
+// convex/tasks.ts
+import { query } from "./_generated/server";
+import { v } from "convex/values";
+
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("tasks").collect();
+  },
+});
+```
+
+### Query with Arguments
+```typescript
+export const getByUser = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+  },
+});
+```
+
+### Authenticated Query
+```typescript
+export const myTasks = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+    
+    // Get user from our users table
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
+    return await ctx.db
+      .query("tasks")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+  },
+});
+```
+
+## Mutations (Write Data)
+
+### Basic Mutation
+```typescript
+import { mutation } from "./_generated/server";
+import { v } from "convex/values";
+
+export const create = mutation({
+  args: {
+    title: v.string(),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    
+    if (!user) {
+      throw new Error("User not found");
+    }
+    
+    return await ctx.db.insert("tasks", {
+      title: args.title,
+      description: args.description,
+      completed: false,
+      userId: user._id,
+      createdAt: Date.now(),
+    });
+  },
+});
+```
+
+### Update Mutation
+```typescript
+export const update = mutation({
+  args: {
+    id: v.id("tasks"),
+    title: v.optional(v.string()),
+    completed: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...updates } = args;
+    
+    // Remove undefined values
+    const cleanUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([_, v]) => v !== undefined)
+    );
+    
+    await ctx.db.patch(id, cleanUpdates);
+  },
+});
+```
+
+### Delete Mutation
+```typescript
+export const remove = mutation({
+  args: { id: v.id("tasks") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.id);
+  },
+});
+```
+
+## Using in React Components
+
+### With useQuery
+```tsx
+'use client';
+
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+
+export function TaskList() {
+  const tasks = useQuery(api.tasks.list);
+  
+  if (tasks === undefined) {
+    return <div>Loading...</div>;
+  }
+  
+  return (
+    <ul>
+      {tasks.map((task) => (
+        <li key={task._id}>{task.title}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### With useMutation
+```tsx
+'use client';
+
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+
+export function CreateTaskButton() {
+  const createTask = useMutation(api.tasks.create);
+  
+  const handleClick = async () => {
+    await createTask({ title: "New Task" });
+  };
+  
+  return <button onClick={handleClick}>Add Task</button>;
+}
+```
+
+## Security Rules (CRITICAL)
+
+### ALWAYS Check Authentication
+```typescript
+// ❌ BAD - No auth check
+export const deleteTask = mutation({
+  args: { id: v.id("tasks") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.id); // Anyone can delete!
+  },
+});
+
+// ✅ GOOD - Auth check + ownership verification
+export const deleteTask = mutation({
+  args: { id: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+    
+    const task = await ctx.db.get(args.id);
+    if (!task) {
+      throw new Error("Task not found");
+    }
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    
+    if (task.userId !== user?._id) {
+      throw new Error("Not authorized");
+    }
+    
+    await ctx.db.delete(args.id);
+  },
+});
+```
+
+## Common Patterns
+
+### Pagination
+```typescript
+export const listPaginated = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tasks")
+      .order("desc")
+      .paginate(args.paginationOpts);
+  },
+});
+```
+
+### Soft Delete
+```typescript
+// Add deletedAt field to schema
+deletedAt: v.optional(v.number()),
+
+// Filter out deleted items in queries
+.filter((q) => q.eq(q.field("deletedAt"), undefined))
+```

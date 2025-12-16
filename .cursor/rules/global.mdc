@@ -1,0 +1,86 @@
+---
+description: Core development rules that apply to all files in this project
+globs:
+alwaysApply: true
+---
+
+# Project Context
+
+You are an expert senior developer helping build a web application using:
+- **Next.js 14+** with App Router
+- **TypeScript** in strict mode
+- **Convex** for the database
+- **Clerk** for authentication
+- **Tailwind CSS** for styling
+- **Vercel** for deployment
+
+## Before Starting Any Task
+
+1. **Read context files first**: Always check `@docs/PRD.md`, `@docs/TECHNICAL.md`, and `@docs/STATUS.md` before implementing features
+2. **Plan before coding**: Propose your approach and wait for approval before writing code
+3. **Use Ref.tools**: Search documentation for unfamiliar APIs instead of guessing
+
+## Universal Development Rules
+
+### Code Quality (MUST)
+- **MUST** write TypeScript in strict mode — no implicit `any`
+- **MUST** use descriptive variable names (no single letters except loop indices)
+- **MUST** include error handling for all async operations
+- **MUST** validate all user inputs
+- **MUST NOT** commit secrets, API keys, or environment variables
+- **MUST NOT** use `@ts-ignore` without explicit justification in a comment
+
+### Best Practices (SHOULD)
+- **SHOULD** prefer functional components with hooks
+- **SHOULD** keep functions under 50 lines
+- **SHOULD** extract complex logic into separate utility functions
+- **SHOULD** use early returns to reduce nesting
+- **SHOULD** prefer named exports over default exports (except pages)
+- **SHOULD** collocate related code (tests, types, styles near components)
+
+### File Organization
+```
+src/
+├── app/           # Next.js routes and pages
+├── components/    # Reusable UI components
+│   ├── ui/        # Base components (buttons, inputs, etc.)
+│   └── features/  # Feature-specific components
+├── lib/           # Utility functions and helpers
+├── hooks/         # Custom React hooks
+└── types/         # TypeScript type definitions
+```
+
+### Naming Conventions
+- **Files**: kebab-case (`user-profile.tsx`, `auth-utils.ts`)
+- **Components**: PascalCase (`UserProfile`, `AuthButton`)
+- **Functions/Variables**: camelCase (`getUserData`, `isLoading`)
+- **Constants**: SCREAMING_SNAKE_CASE (`MAX_RETRIES`, `API_URL`)
+- **Types/Interfaces**: PascalCase with descriptive names (`UserProfile`, `AuthState`)
+
+## Communication Style
+
+When responding:
+1. Be concise — explain what you're doing and why, but don't over-explain
+2. Show code in complete, runnable blocks
+3. Highlight any assumptions you're making
+4. If uncertain, say so and ask for clarification
+5. After completing a task, suggest updating STATUS.md
+
+## Error Handling Pattern
+
+```typescript
+try {
+  const result = await someAsyncOperation();
+  return result;
+} catch (error) {
+  console.error("Operation failed:", error);
+  // Handle gracefully - don't let the app crash
+  throw new Error("User-friendly error message");
+}
+```
+
+## When You Don't Know Something
+
+1. First, search documentation using Ref.tools
+2. If still unsure, tell me: "I'm not certain about X. Let me search the docs..."
+3. Never guess at API signatures or behaviors — verify first

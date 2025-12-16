@@ -1,0 +1,161 @@
+---
+description: Next.js 14+ App Router patterns and best practices
+globs:
+  - "src/app/**/*.tsx"
+  - "src/app/**/*.ts"
+alwaysApply: false
+---
+
+# Next.js 14 App Router Rules
+
+## Server vs Client Components
+
+### Default to Server Components
+Server Components are the default. Only add `'use client'` when you need:
+- Event handlers (`onClick`, `onChange`, etc.)
+- React hooks (`useState`, `useEffect`, etc.)
+- Browser-only APIs (`window`, `localStorage`, etc.)
+
+### Client Component Pattern
+```tsx
+'use client';
+
+import { useState } from 'react';
+
+export function InteractiveComponent() {
+  const [state, setState] = useState(initialValue);
+  // ...
+}
+```
+
+### Composition Pattern (Recommended)
+Keep client components small and push them to the leaves:
+
+```tsx
+// page.tsx (Server Component)
+import { ClientButton } from './client-button';
+
+export default async function Page() {
+  const data = await fetchData(); // Server-side fetch
+  
+  return (
+    <div>
+      <h1>{data.title}</h1>
+      <ClientButton /> {/* Only this part is client */}
+    </div>
+  );
+}
+```
+
+## Route Handlers
+
+### File Structure
+```
+app/
+├── api/
+│   └── users/
+│       └── route.ts    # /api/users
+```
+
+### Pattern
+```tsx
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function GET(request: NextRequest) {
+  try {
+    // Your logic here
+    return NextResponse.json({ data });
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Something went wrong' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+## Data Fetching
+
+### Server Components (Preferred)
+```tsx
+// This runs on the server
+async function getData() {
+  const res = await fetch('https://api.example.com/data', {
+    next: { revalidate: 3600 } // Cache for 1 hour
+  });
+  return res.json();
+}
+
+export default async function Page() {
+  const data = await getData();
+  return <div>{data.title}</div>;
+}
+```
+
+### With Convex (Our Stack)
+```tsx
+// Use Convex's preloaded queries for server components
+import { preloadQuery } from "convex/nextjs";
+import { api } from "@/convex/_generated/api";
+
+export default async function Page() {
+  const preloadedTasks = await preloadQuery(api.tasks.list);
+  return <TaskList preloadedTasks={preloadedTasks} />;
+}
+```
+
+## Loading & Error States
+
+### Loading UI
+```tsx
+// app/dashboard/loading.tsx
+export default function Loading() {
+  return <div>Loading...</div>;
+}
+```
+
+### Error Boundary
+```tsx
+// app/dashboard/error.tsx
+'use client';
+
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error;
+  reset: () => void;
+}) {
+  return (
+    <div>
+      <h2>Something went wrong!</h2>
+      <button onClick={() => reset()}>Try again</button>
+    </div>
+  );
+}
+```
+
+## Metadata
+
+```tsx
+// Static metadata
+export const metadata = {
+  title: 'Page Title',
+  description: 'Page description',
+};
+
+// Dynamic metadata
+export async function generateMetadata({ params }) {
+  return {
+    title: `Dynamic Title for ${params.id}`,
+  };
+}
+```
+
+## Anti-Patterns to Avoid
+
+❌ **Don't** fetch data in client components when it can be server-side
+❌ **Don't** use `useEffect` for data fetching (use server components or React Query)
+❌ **Don't** put `'use client'` at the top of files unnecessarily
+❌ **Don't** pass non-serializable props from server to client components
+❌ **Don't** use `getServerSideProps` or `getStaticProps` (App Router doesn't use these)

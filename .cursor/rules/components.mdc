@@ -1,0 +1,211 @@
+---
+description: React component patterns and UI best practices
+globs:
+  - "src/components/**/*.tsx"
+  - "src/components/**/*.ts"
+alwaysApply: false
+---
+
+# React Component Rules
+
+## Component Structure
+
+### Standard Component Template
+```tsx
+import { type ComponentProps } from 'react';
+import { cn } from '@/lib/utils';
+
+interface ButtonProps extends ComponentProps<'button'> {
+  variant?: 'primary' | 'secondary' | 'ghost';
+  size?: 'sm' | 'md' | 'lg';
+  isLoading?: boolean;
+}
+
+export function Button({
+  variant = 'primary',
+  size = 'md',
+  isLoading = false,
+  className,
+  children,
+  disabled,
+  ...props
+}: ButtonProps) {
+  return (
+    <button
+      className={cn(
+        'inline-flex items-center justify-center rounded-md font-medium transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+        'disabled:pointer-events-none disabled:opacity-50',
+        {
+          'bg-primary text-white hover:bg-primary/90': variant === 'primary',
+          'bg-secondary text-secondary-foreground hover:bg-secondary/80': variant === 'secondary',
+          'hover:bg-accent hover:text-accent-foreground': variant === 'ghost',
+          'h-8 px-3 text-sm': size === 'sm',
+          'h-10 px-4': size === 'md',
+          'h-12 px-6 text-lg': size === 'lg',
+        },
+        className
+      )}
+      disabled={disabled || isLoading}
+      {...props}
+    >
+      {isLoading ? (
+        <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      ) : null}
+      {children}
+    </button>
+  );
+}
+```
+
+## Component Categories
+
+### `/components/ui/` — Base Components
+Primitive, reusable components with no business logic:
+- Button, Input, Select, Checkbox
+- Card, Dialog, Dropdown
+- Typography (Heading, Text, Label)
+
+### `/components/features/` — Feature Components
+Business logic components specific to features:
+- UserProfile, TaskList, ProjectCard
+- AuthForm, SettingsPanel
+
+### `/components/layouts/` — Layout Components
+Page structure and navigation:
+- Header, Footer, Sidebar
+- PageContainer, DashboardLayout
+
+## Props Patterns
+
+### Extending HTML Elements
+```tsx
+// Extend the native element props
+interface InputProps extends ComponentProps<'input'> {
+  label?: string;
+  error?: string;
+}
+```
+
+### Polymorphic Components
+```tsx
+interface BoxProps<T extends React.ElementType> {
+  as?: T;
+  children: React.ReactNode;
+}
+
+export function Box<T extends React.ElementType = 'div'>({
+  as,
+  children,
+  ...props
+}: BoxProps<T> & Omit<ComponentProps<T>, keyof BoxProps<T>>) {
+  const Component = as || 'div';
+  return <Component {...props}>{children}</Component>;
+}
+```
+
+## Styling with Tailwind
+
+### Use the `cn` Helper
+```tsx
+// lib/utils.ts
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+```
+
+### Conditional Classes
+```tsx
+<div
+  className={cn(
+    'base-classes',
+    isActive && 'active-classes',
+    {
+      'variant-a': variant === 'a',
+      'variant-b': variant === 'b',
+    }
+  )}
+/>
+```
+
+## State Management
+
+### Local State (useState)
+Use for UI state that doesn't need to be shared:
+```tsx
+const [isOpen, setIsOpen] = useState(false);
+```
+
+### Form State (useForm)
+Use react-hook-form for complex forms:
+```tsx
+import { useForm } from 'react-hook-form';
+
+const { register, handleSubmit, formState: { errors } } = useForm();
+```
+
+### Server State (Convex)
+Use Convex hooks for server data:
+```tsx
+const data = useQuery(api.tasks.list);
+const createTask = useMutation(api.tasks.create);
+```
+
+## Accessibility (MUST)
+
+### Required Patterns
+```tsx
+// Buttons must have accessible names
+<button aria-label="Close dialog">
+  <XIcon />
+</button>
+
+// Form inputs must have labels
+<label htmlFor="email">Email</label>
+<input id="email" type="email" />
+
+// Images must have alt text
+<img src={url} alt="Description of image" />
+
+// Interactive elements need focus states
+className="focus-visible:ring-2 focus-visible:ring-offset-2"
+```
+
+### Keyboard Navigation
+- All interactive elements must be keyboard accessible
+- Use proper focus management in modals/dialogs
+- Support Escape key to close overlays
+
+## Performance Patterns
+
+### Memoization (Use Sparingly)
+```tsx
+// Only memo expensive computations
+const expensiveValue = useMemo(() => computeExpensive(data), [data]);
+
+// Only useCallback when passing to memoized children
+const handleClick = useCallback(() => {
+  // handler logic
+}, [dependency]);
+```
+
+### Lazy Loading
+```tsx
+import dynamic from 'next/dynamic';
+
+const HeavyComponent = dynamic(() => import('./HeavyComponent'), {
+  loading: () => <Skeleton />,
+});
+```
+
+## Anti-Patterns to Avoid
+
+❌ **Don't** use `index` as key for lists that can reorder
+❌ **Don't** mutate state directly
+❌ **Don't** use `useEffect` for derived state (use `useMemo`)
+❌ **Don't** over-use `useCallback`/`useMemo` (trust React's speed)
+❌ **Don't** put business logic in UI components (extract to hooks/utils)
+❌ **Don't** use `any` type for props
